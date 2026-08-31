@@ -33,7 +33,7 @@ const client = new Client({
 // ═══════════════════════════════════════════════
 
 const commands = [
-  new SlashCommandBuilder().setName("balance").setDescription("Показать твой баланс монет"),
+  new SlashCommandBuilder().setName("balance").setDescription("Показать твой баланс пива"),
   new SlashCommandBuilder().setName("daily").setDescription("Забрать ежедневный бонус"),
   new SlashCommandBuilder()
     .setName("shop")
@@ -126,7 +126,7 @@ function buildItemButtons(category) {
       new ButtonBuilder()
         .setCustomId(`shop_buy_${item.id}`)
         .setLabel(`${item.name} — ${item.price}`)
-        .setEmoji(item.emoji || "🛒")
+        .setEmoji(item.emoji || cfg.CURRENCY_EMOJI)
         .setStyle(ButtonStyle.Success)
     );
   });
@@ -201,7 +201,7 @@ client.once("ready", async () => {
     }
   }
 
-  // Запускаем таймер начисления монет за войс
+  // Запускаем таймер начисления пива за войс
   setInterval(voiceEarnTick, cfg.VOICE_INTERVAL_MINUTES * 60 * 1000);
 });
 
@@ -289,7 +289,7 @@ client.on("messageCreate", async (message) => {
   }
 });
 
-// Заработок за время в войсе — тикает по таймеру, начисляет всем, кто сейчас в войсе
+// Заработок за время в войсе — тикает по таймеру, начисляет пиво всем, кто сейчас в войсе
 function voiceEarnTick() {
   for (const [, guild] of client.guilds.cache) {
     guild.channels.cache.forEach((channel) => {
@@ -317,7 +317,7 @@ async function purchaseItem(interaction, item) {
 
   if (!success) {
     await interaction.reply({
-      content: `❌ Недостаточно монет. Нужно ${item.price}, у тебя ${getBalance(userId)}`,
+      content: `❌ Недостаточно пива. Нужно ${item.price} ${cfg.CURRENCY_EMOJI}, у тебя ${getBalance(userId)} ${cfg.CURRENCY_EMOJI}`,
       ephemeral: true,
     });
     return;
@@ -328,9 +328,9 @@ async function purchaseItem(interaction, item) {
     await member.roles.add(item.roleId);
     await interaction.reply({ content: `✅ Купил **${item.name}**! Роль выдана.`, ephemeral: true });
   } catch (e) {
-    addBalance(userId, item.price); // возвращаем монеты, если роль не выдалась
+    addBalance(userId, item.price); // возвращаем пиво, если роль не выдалась
     await interaction.reply({
-      content: "❌ Не смог выдать роль (проверь права бота/ID роли). Монеты возвращены.",
+      content: "❌ Не смог выдать роль (проверь права бота/ID роли). Пиво возвращено.",
       ephemeral: true,
     });
   }
@@ -395,7 +395,7 @@ client.on("interactionCreate", async (interaction) => {
       embeds: [
         new EmbedBuilder()
           .setColor(0x57f287)
-          .setDescription(`💰 У тебя на балансе: **${bal}** монет`),
+          .setDescription(`${cfg.CURRENCY_EMOJI} У тебя на балансе: **${bal}** пива`),
       ],
     });
   }
@@ -417,7 +417,7 @@ client.on("interactionCreate", async (interaction) => {
     addBalance(user.id, cfg.DAILY_AMOUNT);
     db.lastDaily[user.id] = now;
     save();
-    await interaction.reply(`✅ Забрал ежедневный бонус: **+${cfg.DAILY_AMOUNT}** монет`);
+    await interaction.reply(`✅ Забрал ежедневный бонус: **+${cfg.DAILY_AMOUNT}** пива ${cfg.CURRENCY_EMOJI}`);
   }
 
   if (commandName === "shop") {
@@ -465,7 +465,7 @@ client.on("interactionCreate", async (interaction) => {
     const newBalance = addBalance(target.id, amount);
 
     await interaction.reply(
-      `✅ ${amount >= 0 ? "Выдано" : "Списано"} **${Math.abs(amount)}** монет для <@${target.id}>. Новый баланс: **${newBalance}**`
+      `✅ ${amount >= 0 ? "Выдано" : "Списано"} **${Math.abs(amount)}** пива ${cfg.CURRENCY_EMOJI} для <@${target.id}>. Новый баланс: **${newBalance}** ${cfg.CURRENCY_EMOJI}`
     );
   }
 
@@ -476,7 +476,7 @@ client.on("interactionCreate", async (interaction) => {
 
     if (type === "coins") {
       entries = Object.entries(db.balances);
-      title = "🏆 Топ по монетам";
+      title = `🏆 Топ по пиву ${cfg.CURRENCY_EMOJI}`;
     } else {
       entries = Object.entries(db.inviterCounts);
       title = "🏆 Топ по инвайтам";
@@ -490,7 +490,8 @@ client.on("interactionCreate", async (interaction) => {
       return;
     }
 
-    const lines = top10.map(([id, val], i) => `${i + 1}. <@${id}> — ${val}`).join("\n");
+    const suffix = type === "coins" ? ` ${cfg.CURRENCY_EMOJI}` : "";
+    const lines = top10.map(([id, val], i) => `${i + 1}. <@${id}> — ${val}${suffix}`).join("\n");
     await interaction.reply({
       embeds: [new EmbedBuilder().setColor(0xfee75c).setTitle(title).setDescription(lines)],
     });
