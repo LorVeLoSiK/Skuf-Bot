@@ -178,6 +178,33 @@ async function checkInviteThresholds(guild, userId) {
   }
 }
 
+// Снимает роли, которые больше не заслужены — если счётчик инвайтов упал
+// ниже порога (например, приглашённый вышел раньше LEAVE_PENALTY_DAYS)
+async function revokeUnearnedRoles(guild, userId) {
+  const count = db.inviterCounts[userId] || 0;
+  const given = db.givenRoles[userId] || [];
+
+  for (const threshold of cfg.INVITE_THRESHOLDS) {
+    if (count < threshold.count && given.includes(threshold.roleId)) {
+      try {
+        const member = await guild.members.fetch(userId);
+        await member.roles.remove(threshold.roleId);
+        db.givenRoles[userId] = given.filter((id) => id !== threshold.roleId);
+        save();
+        await logToChannel(
+          guild,
+          `📉 <@${userId}> потерял роль **${threshold.label}** — счёт инвайтов упал ниже ${threshold.count}`
+        );
+      } catch (e) {
+        // Юзер мог сам выйти с сервера — тогда роль снимать не с кого, просто убираем из списка выданных
+        db.givenRoles[userId] = given.filter((id) => id !== threshold.roleId);
+        save();
+        console.error(`Не смог снять роль ${threshold.roleId} у юзера ${userId}:`, e.message);
+      }
+    }
+  }
+}
+
 // ═══════════════════════════════════════════════
 // СОБЫТИЯ
 // ═══════════════════════════════════════════════
@@ -269,6 +296,7 @@ client.on("guildMemberRemove", async (member) => {
       member.guild,
       `⚠️ <@${member.id}> вышел раньше ${cfg.LEAVE_PENALTY_DAYS} дней — инвайт снят с <@${inviterId}>`
     );
+    await revokeUnearnedRoles(member.guild, inviterId);
   }
 });
 
