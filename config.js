@@ -10,11 +10,11 @@ module.exports = {
   CHAT_COOLDOWN_SEC: 30,   // раз в сколько секунд можно заработать за сообщение
 
   // ── ЗАРАБОТОК В ВОЙСЕ ──
-  VOICE_EARN_AMOUNT: 10,       // сколько монет начисляется за интервал
+  VOICE_EARN_AMOUNT: 7,       // сколько монет начисляется за интервал
   VOICE_INTERVAL_MINUTES: 5,   // раз в сколько минут начисляется
   VOICE_REQUIRE_NOT_ALONE: true, // true = не платить, если человек один в канале (без учёта ботов)
   VOICE_IGNORE_AFK: true,      // не платить, если человек в AFK-канале
-  VOICE_IGNORE_MUTED_DEAFENED: false, // true = не платить, если человек в мьюте/дефе
+  VOICE_IGNORE_MUTED_DEAFENED: true, // true = не платить, если человек в мьюте/дефе
 
   // ── ЕЖЕДНЕВНЫЙ БОНУС ──
   DAILY_AMOUNT: 15,
@@ -25,7 +25,7 @@ module.exports = {
   // label — просто для логов/сообщений
   INVITE_THRESHOLDS: [
     { count: 1, roleId: "1543457535707713637", label: "Санитар Утопии" },
-    { count: 3, roleId: "1543458447373246464", label: "Кадровик Барака" },
+    { count: 3, roleId: "1543458447373246464", label: "Кадровик барака" },
     { count: 7, roleId: "1543459062832955463", label: "Отец-Основатель" },
   ],
 
@@ -33,9 +33,27 @@ module.exports = {
   LEAVE_PENALTY_DAYS: 7,
 
   // ── МАГАЗИН (покупка ролей за монеты) ──
-  SHOP_ITEMS: [
-    { id: "role", name: "Брат", price: 1200, roleId: "1420292146040144024" },
-    { id: "role", name: "Сторожила", price: 1000, roleId: "1420291717302587442" },
+  // Магазин показывается с кнопками — категории раскрываются в список товаров.
+  // roleId — ID роли, которая выдаётся при покупке
+  SHOP_CATEGORIES: [
+    {
+      id: "roles",
+      name: "Роль",
+      emoji: "🧌",
+      items: [
+        { id: "brat", name: "Брат", price: 1200, roleId: "1420292146040144024", emoji: "🐦‍🔥" },
+        { id: "storogila", name: "Сторожила", price: 1000, roleId: "1420291717302587442", emoji: "⚠️" },
+      ],
+    },
+    // можешь добавить ещё категории по этому же образцу, например:
+    // {
+    //   id: "misc",
+    //   name: "Разное",
+    //   emoji: "🎁",
+    //   items: [
+    //     { id: "brat", name: "Брат", price: 1200, roleId: "ROLE_ID_BRAT", emoji: "🍺" },
+    //   ],
+    // },
   ],
 
   // ── КАНАЛ ДЛЯ ЛОГОВ (необязательно) ──

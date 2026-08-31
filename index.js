@@ -7,6 +7,11 @@ const {
   Routes,
   SlashCommandBuilder,
   EmbedBuilder,
+  PermissionFlagsBits,
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
+  StringSelectMenuBuilder,
 } = require("discord.js");
 const cfg = require("./config");
 const { db, save, getBalance, addBalance, subtractBalance } = require("./db");
@@ -55,6 +60,19 @@ const commands = [
           { name: "Инвайты", value: "invites" }
         )
     ),
+  new SlashCommandBuilder()
+    .setName("addcoins")
+    .setDescription("[Админ] Выдать/списать пиво игроку")
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
+    .addUserOption((opt) =>
+      opt.setName("user").setDescription("Кому").setRequired(true)
+    )
+    .addIntegerOption((opt) =>
+      opt
+        .setName("amount")
+        .setDescription("Сколько пива (можно отрицательное число, чтобы списать)")
+        .setRequired(true)
+    ),
 ].map((c) => c.toJSON());
 
 async function registerCommands() {
@@ -70,9 +88,61 @@ async function registerCommands() {
   }
 }
 
-// ═══════════════════════════════════════════════
-// ХЕЛПЕРЫ
-// ═══════════════════════════════════════════════
+// Ищет товар по ID во всех категориях
+function findShopItem(itemId) {
+  for (const category of cfg.SHOP_CATEGORIES) {
+    const item = category.items.find((i) => i.id === itemId);
+    if (item) return { ...item, categoryId: category.id, categoryName: category.name };
+  }
+  return null;
+}
+
+// Строит выпадающее меню со списком категорий магазина
+function buildCategoryMenu() {
+  const menu = new StringSelectMenuBuilder()
+    .setCustomId("shop_select_category")
+    .setPlaceholder("Выбери категорию")
+    .addOptions(
+      cfg.SHOP_CATEGORIES.map((cat) => ({
+        label: cat.name,
+        value: cat.id,
+        emoji: cat.emoji || undefined,
+      }))
+    );
+  return new ActionRowBuilder().addComponents(menu);
+}
+
+// Строит кнопки товаров внутри выбранной категории + кнопку "Назад"
+function buildItemButtons(category) {
+  const rows = [];
+  let currentRow = new ActionRowBuilder();
+
+  category.items.forEach((item, i) => {
+    if (i > 0 && i % 5 === 0) {
+      rows.push(currentRow);
+      currentRow = new ActionRowBuilder();
+    }
+    currentRow.addComponents(
+      new ButtonBuilder()
+        .setCustomId(`shop_buy_${item.id}`)
+        .setLabel(`${item.name} — ${item.price}`)
+        .setEmoji(item.emoji || "🛒")
+        .setStyle(ButtonStyle.Success)
+    );
+  });
+  rows.push(currentRow);
+
+  rows.push(
+    new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId("shop_back")
+        .setLabel("Назад к категориям")
+        .setStyle(ButtonStyle.Secondary)
+    )
+  );
+
+  return rows;
+}
 
 async function logToChannel(guild, text) {
   if (!cfg.LOG_CHANNEL_ID) return;
@@ -240,11 +310,81 @@ function voiceEarnTick() {
   }
 }
 
+// Общая логика покупки — используется и командой /buy, и кнопками в магазине
+async function purchaseItem(interaction, item) {
+  const userId = interaction.user.id;
+  const success = subtractBalance(userId, item.price);
+
+  if (!success) {
+    await interaction.reply({
+      content: `❌ Недостаточно монет. Нужно ${item.price}, у тебя ${getBalance(userId)}`,
+      ephemeral: true,
+    });
+    return;
+  }
+
+  try {
+    const member = await interaction.guild.members.fetch(userId);
+    await member.roles.add(item.roleId);
+    await interaction.reply({ content: `✅ Купил **${item.name}**! Роль выдана.`, ephemeral: true });
+  } catch (e) {
+    addBalance(userId, item.price); // возвращаем монеты, если роль не выдалась
+    await interaction.reply({
+      content: "❌ Не смог выдать роль (проверь права бота/ID роли). Монеты возвращены.",
+      ephemeral: true,
+    });
+  }
+}
+
 // ═══════════════════════════════════════════════
 // ОБРАБОТКА СЛЭШ-КОМАНД
 // ═══════════════════════════════════════════════
 
 client.on("interactionCreate", async (interaction) => {
+  // Выбор категории в выпадающем меню магазина
+  if (interaction.isStringSelectMenu() && interaction.customId === "shop_select_category") {
+    const categoryId = interaction.values[0];
+    const category = cfg.SHOP_CATEGORIES.find((c) => c.id === categoryId);
+    if (!category) return;
+
+    await interaction.update({
+      embeds: [
+        new EmbedBuilder()
+          .setColor(0x5865f2)
+          .setTitle(`${category.emoji || ""} ${category.name}`.trim())
+          .setDescription("Нажми на кнопку, чтобы купить."),
+      ],
+      components: buildItemButtons(category),
+    });
+    return;
+  }
+
+  // Кнопка "Назад к категориям"
+  if (interaction.isButton() && interaction.customId === "shop_back") {
+    await interaction.update({
+      embeds: [
+        new EmbedBuilder()
+          .setColor(0x5865f2)
+          .setTitle("🛒 Магазин Утопии")
+          .setDescription("Выбери категорию ниже, чтобы посмотреть товары."),
+      ],
+      components: [buildCategoryMenu()],
+    });
+    return;
+  }
+
+  // Кнопка покупки конкретного товара
+  if (interaction.isButton() && interaction.customId.startsWith("shop_buy_")) {
+    const itemId = interaction.customId.replace("shop_buy_", "");
+    const item = findShopItem(itemId);
+    if (!item) {
+      await interaction.reply({ content: "❌ Товар не найден.", ephemeral: true });
+      return;
+    }
+    await purchaseItem(interaction, item);
+    return;
+  }
+
   if (!interaction.isChatInputCommand()) return;
 
   const { commandName, user } = interaction;
@@ -281,54 +421,52 @@ client.on("interactionCreate", async (interaction) => {
   }
 
   if (commandName === "shop") {
-    const lines = cfg.SHOP_ITEMS.map(
-      (item) => `\`${item.id}\` — **${item.name}** — ${item.price} монет`
-    ).join("\n");
     await interaction.reply({
       embeds: [
         new EmbedBuilder()
           .setColor(0x5865f2)
           .setTitle("🛒 Магазин Утопии")
-          .setDescription(lines || "Магазин пуст")
-          .setFooter({ text: "Купить: /buy item:ID" }),
+          .setDescription("Выбери категорию ниже, чтобы посмотреть товары."),
       ],
+      components: [buildCategoryMenu()],
     });
   }
 
   if (commandName === "buy") {
     const itemId = interaction.options.getString("item");
-    const item = cfg.SHOP_ITEMS.find((i) => i.id === itemId);
+    const item = findShopItem(itemId);
 
     if (!item) {
       await interaction.reply({ content: "❌ Нет такого предмета. Смотри /shop", ephemeral: true });
       return;
     }
 
-    const success = subtractBalance(user.id, item.price);
-    if (!success) {
-      await interaction.reply({
-        content: `❌ Недостаточно монет. Нужно ${item.price}, у тебя ${getBalance(user.id)}`,
-        ephemeral: true,
-      });
-      return;
-    }
-
-    try {
-      const member = await interaction.guild.members.fetch(user.id);
-      await member.roles.add(item.roleId);
-      await interaction.reply(`✅ Купил **${item.name}**! Роль выдана.`);
-    } catch (e) {
-      addBalance(user.id, item.price); // возвращаем монеты, если роль не выдалась
-      await interaction.reply({
-        content: "❌ Не смог выдать роль (проверь права бота/ID роли). Монеты возвращены.",
-        ephemeral: true,
-      });
-    }
+    await purchaseItem(interaction, item);
   }
 
   if (commandName === "invites") {
     const count = db.inviterCounts[user.id] || 0;
     await interaction.reply(`🎯 Ты пригласил: **${count}** человек`);
+  }
+
+  if (commandName === "addcoins") {
+    // Двойная проверка прав — на случай если кто-то вызовет команду в обход UI Discord
+    if (!interaction.memberPermissions.has(PermissionFlagsBits.Administrator)) {
+      await interaction.reply({
+        content: "❌ Эта команда только для администраторов.",
+        ephemeral: true,
+      });
+      return;
+    }
+
+    const target = interaction.options.getUser("user");
+    const amount = interaction.options.getInteger("amount");
+
+    const newBalance = addBalance(target.id, amount);
+
+    await interaction.reply(
+      `✅ ${amount >= 0 ? "Выдано" : "Списано"} **${Math.abs(amount)}** монет для <@${target.id}>. Новый баланс: **${newBalance}**`
+    );
   }
 
   if (commandName === "leaderboard") {
