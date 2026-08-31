@@ -1,0 +1,14 @@
+{
+  "name": "skufutopia-bot",
+  "version": "1.0.0",
+  "description": "Экономика + инвайт-трекинг для Skuf Utopia",
+  "main": "index.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "discord.js": "^14.16.3",
+    "dotenv": "^16.4.5"
+  }
+}
