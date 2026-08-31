@@ -1,10 +1,22 @@
 // Простая база на JSON-файле — не нужно поднимать отдельный сервер БД.
 // Для маленького/среднего сервера этого достаточно с запасом.
+//
+// ВАЖНО: на Railway/Render файловая система контейнера НЕ постоянная —
+// при каждом передеплое всё стирается. Чтобы данные (баланс, инвайты) не
+// слетали, нужно подключить постоянный диск (Volume) и указать его путь
+// через переменную окружения DATA_DIR. Если DATA_DIR не задана — используется
+// обычная папка проекта (данные будут слетать при передеплое, как раньше).
 
 const fs = require("fs");
 const path = require("path");
 
-const DB_PATH = path.join(__dirname, "data.json");
+const DATA_DIR = process.env.DATA_DIR || __dirname;
+const DB_PATH = path.join(DATA_DIR, "data.json");
+
+// На случай если папка DATA_DIR ещё не существует
+if (!fs.existsSync(DATA_DIR)) {
+  fs.mkdirSync(DATA_DIR, { recursive: true });
+}
 
 function loadDB() {
   if (!fs.existsSync(DB_PATH)) {
