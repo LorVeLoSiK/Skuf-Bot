@@ -27,6 +27,7 @@ function loadDB() {
       inviterCounts: {},     // userId(того кто приглашал) -> число засчитанных инвайтов
       joinedVia: {},          // memberId(того кто зашёл) -> { inviterId, joinedAt }
       givenRoles: {},          // userId -> [roleId, roleId, ...] уже выданные пороговые роли (чтобы не выдавать повторно)
+      recentInvites: {},        // userId(инвайтера) -> [{ userId, username, joinedAt }, ...] последние 5, новые сверху
       inviteCodeCache: {},       // guildId -> { code: uses } — снэпшот инвайтов для вычисления, кто кого пригласил
     };
     fs.writeFileSync(DB_PATH, JSON.stringify(initial, null, 2));
@@ -36,6 +37,12 @@ function loadDB() {
 }
 
 let db = loadDB();
+
+// Миграция: если база создана до появления этого поля — добавляем его,
+// чтобы не упасть на существующих данных (например, уже на Railway)
+if (!db.recentInvites) {
+  db.recentInvites = {};
+}
 
 function save() {
   fs.writeFileSync(DB_PATH, JSON.stringify(db, null, 2));

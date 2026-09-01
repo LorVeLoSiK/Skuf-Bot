@@ -273,6 +273,16 @@ client.on("guildMemberAdd", async (member) => {
       const inviterId = usedInvite.inviter.id;
       db.inviterCounts[inviterId] = (db.inviterCounts[inviterId] || 0) + 1;
       db.joinedVia[member.id] = { inviterId, joinedAt: Date.now() };
+
+      // Добавляем в список последних приглашённых — новые сверху, храним максимум 5
+      if (!db.recentInvites[inviterId]) db.recentInvites[inviterId] = [];
+      db.recentInvites[inviterId].unshift({
+        userId: member.id,
+        username: member.user.username,
+        joinedAt: Date.now(),
+      });
+      db.recentInvites[inviterId] = db.recentInvites[inviterId].slice(0, 5);
+
       save();
 
       await checkInviteThresholds(member.guild, inviterId);
@@ -294,6 +304,11 @@ client.on("guildMemberRemove", async (member) => {
     const inviterId = joinInfo.inviterId;
     db.inviterCounts[inviterId] = Math.max(0, (db.inviterCounts[inviterId] || 0) - 1);
     delete db.joinedVia[member.id];
+    if (db.recentInvites[inviterId]) {
+      db.recentInvites[inviterId] = db.recentInvites[inviterId].filter(
+        (entry) => entry.userId !== member.id
+      );
+    }
     save();
     await logToChannel(
       member.guild,
@@ -478,7 +493,26 @@ client.on("interactionCreate", async (interaction) => {
 
   if (commandName === "invites") {
     const count = db.inviterCounts[user.id] || 0;
-    await interaction.reply({ content: `🎯 Ты пригласил: **${count}** человек`, ephemeral: true });
+    const recent = db.recentInvites[user.id] || [];
+
+    const lines = [];
+    for (let i = 0; i < 5; i++) {
+      if (recent[i]) {
+        lines.push(`${i + 1}. **${recent[i].username}**`);
+      } else {
+        lines.push(`${i + 1}. —`);
+      }
+    }
+
+    await interaction.reply({
+      embeds: [
+        new EmbedBuilder()
+          .setColor(0x5865f2)
+          .setTitle("🎯 Твои приглашения")
+          .setDescription(`Всего приглашено: **${count}**\n\n**Последние 5:**\n${lines.join("\n")}`),
+      ],
+      ephemeral: true,
+    });
   }
 
   if (commandName === "addcoins") {
