@@ -428,6 +428,7 @@ client.on("interactionCreate", async (interaction) => {
           .setColor(0x57f287)
           .setDescription(`${cfg.CURRENCY_EMOJI} У тебя на балансе: **${bal}** пива`),
       ],
+      ephemeral: true,
     });
   }
 
@@ -477,7 +478,7 @@ client.on("interactionCreate", async (interaction) => {
 
   if (commandName === "invites") {
     const count = db.inviterCounts[user.id] || 0;
-    await interaction.reply(`🎯 Ты пригласил: **${count}** человек`);
+    await interaction.reply({ content: `🎯 Ты пригласил: **${count}** человек`, ephemeral: true });
   }
 
   if (commandName === "addcoins") {
