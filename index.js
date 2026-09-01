@@ -167,9 +167,10 @@ async function checkInviteThresholds(guild, userId) {
         given.push(threshold.roleId);
         db.givenRoles[userId] = given;
         save();
+        addBalance(userId, threshold.coinReward || 0);
         await logToChannel(
           guild,
-          `🎉 <@${userId}> получил роль **${threshold.label}** за ${threshold.count}+ приглашённых!`
+          `🎉 <@${userId}> получил роль **${threshold.label}** и +${threshold.coinReward || 0} ${cfg.CURRENCY_EMOJI} за ${threshold.count}+ приглашённых!`
         );
       } catch (e) {
         console.error(`Не смог выдать роль ${threshold.roleId} юзеру ${userId}:`, e.message);
@@ -191,14 +192,16 @@ async function revokeUnearnedRoles(guild, userId) {
         await member.roles.remove(threshold.roleId);
         db.givenRoles[userId] = given.filter((id) => id !== threshold.roleId);
         save();
+        addBalance(userId, -(threshold.coinReward || 0)); // может уйти в минус, это нормально
         await logToChannel(
           guild,
-          `📉 <@${userId}> потерял роль **${threshold.label}** — счёт инвайтов упал ниже ${threshold.count}`
+          `📉 <@${userId}> потерял роль **${threshold.label}** и −${threshold.coinReward || 0} ${cfg.CURRENCY_EMOJI} — счёт инвайтов упал ниже ${threshold.count}`
         );
       } catch (e) {
-        // Юзер мог сам выйти с сервера — тогда роль снимать не с кого, просто убираем из списка выданных
+        // Юзер мог сам выйти с сервера — роль снимать не с кого, но пиво всё равно списываем
         db.givenRoles[userId] = given.filter((id) => id !== threshold.roleId);
         save();
+        addBalance(userId, -(threshold.coinReward || 0));
         console.error(`Не смог снять роль ${threshold.roleId} у юзера ${userId}:`, e.message);
       }
     }
