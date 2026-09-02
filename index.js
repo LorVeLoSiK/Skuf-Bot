@@ -124,9 +124,11 @@ function buildShopHome() {
   const embed = new EmbedBuilder()
     .setColor(0x5865f2)
     .setTitle("🍻 Таверна Утопии")
-    .setDescription("Разряжай кошелёк, скуф — выбирай свою роль")
+    .setDescription(
+      "Заходи, скуф, грей кости у очага.\nЗдесь за пиво меняют не только хмель — но и уважение орды.\n\nВыбирай полку ниже."
+    )
     .setImage("attachment://shop_banner.jpg")
-    .setFooter({ text: "Проверить баланс: /balance" });
+    .setFooter({ text: "Проверить загашник: /balance" });
 
   return { embeds: [embed], components: [buildCategoryMenu()], files: [banner] };
 }
@@ -189,7 +191,7 @@ async function checkInviteThresholds(guild, userId) {
         addBalance(userId, threshold.coinReward || 0);
         await logToChannel(
           guild,
-          `🎉 <@${userId}> получил роль **${threshold.label}** и +${threshold.coinReward || 0} ${cfg.CURRENCY_EMOJI} за ${threshold.count}+ приглашённых!`
+          `🎉 <@${userId}> прошёл путь и получил роль **${threshold.label}** + ${threshold.coinReward || 0} ${cfg.CURRENCY_EMOJI} за ${threshold.count}+ приглашённых! Слава Орде!`
         );
       } catch (e) {
         console.error(`Не смог выдать роль ${threshold.roleId} юзеру ${userId}:`, e.message);
@@ -214,7 +216,7 @@ async function revokeUnearnedRoles(guild, userId) {
         addBalance(userId, -(threshold.coinReward || 0)); // может уйти в минус, это нормально
         await logToChannel(
           guild,
-          `📉 <@${userId}> потерял роль **${threshold.label}** и −${threshold.coinReward || 0} ${cfg.CURRENCY_EMOJI} — счёт инвайтов упал ниже ${threshold.count}`
+          `📉 <@${userId}> оступился — роль **${threshold.label}** и ${threshold.coinReward || 0} ${cfg.CURRENCY_EMOJI} изъяты, счёт вербовки упал ниже ${threshold.count}`
         );
       } catch (e) {
         // Юзер мог сам выйти с сервера — роль снимать не с кого, но пиво всё равно списываем
@@ -331,7 +333,7 @@ client.on("guildMemberRemove", async (member) => {
     save();
     await logToChannel(
       member.guild,
-      `⚠️ <@${member.id}> вышел раньше ${cfg.LEAVE_PENALTY_DAYS} дней — инвайт снят с <@${inviterId}>`
+      `⚠️ <@${member.id}> сбежал из Орды раньше ${cfg.LEAVE_PENALTY_DAYS} дней — инвайт снят с <@${inviterId}>`
     );
     await revokeUnearnedRoles(member.guild, inviterId);
   }
@@ -383,7 +385,11 @@ async function purchaseItem(interaction, item) {
   const member = await interaction.guild.members.fetch(userId);
   if (member.roles.cache.has(item.roleId)) {
     await interaction.reply({
-      content: `😏 У тебя дружок уже есть роль **${item.name}** — не жадничай.`,
+      embeds: [
+        new EmbedBuilder()
+          .setColor(0xfee75c)
+          .setDescription(`😏 Эту роль ты уже носишь, скуф. Дважды в одну реку не входят — глянь остальное.`),
+      ],
       ephemeral: true,
     });
     return;
@@ -393,7 +399,14 @@ async function purchaseItem(interaction, item) {
 
   if (!success) {
     await interaction.reply({
-      content: `❌ Недостаточно пива. Нужно ${item.price} ${cfg.CURRENCY_EMOJI}, у тебя ${getBalance(userId)} ${cfg.CURRENCY_EMOJI}`,
+      embeds: [
+        new EmbedBuilder()
+          .setColor(0xed4245)
+          .setTitle("🪙 Кошелёк пустой")
+          .setDescription(
+            `Нужно **${item.price}** ${cfg.CURRENCY_EMOJI}, а у тебя всего **${getBalance(userId)}** ${cfg.CURRENCY_EMOJI}.\n\nЗарабатывай в чате, зависай в войсе или тащи корешей по рефералке — /invites.`
+          ),
+      ],
       ephemeral: true,
     });
     return;
@@ -401,11 +414,26 @@ async function purchaseItem(interaction, item) {
 
   try {
     await member.roles.add(item.roleId);
-    await interaction.reply({ content: `✅ Купил **${item.name}**! Роль выдана.`, ephemeral: true });
+    await interaction.reply({
+      embeds: [
+        new EmbedBuilder()
+          .setColor(0x57f287)
+          .setTitle("🎉 Куплено!")
+          .setDescription(`Забрал **${item.name}** — теперь вся Орда видит, кто тут в авторитете.`),
+      ],
+      ephemeral: true,
+    });
   } catch (e) {
     addBalance(userId, item.price); // возвращаем пиво, если роль не выдалась
     await interaction.reply({
-      content: "❌ Не смог выдать роль (проверь права бота/ID роли). Пиво возвращено.",
+      embeds: [
+        new EmbedBuilder()
+          .setColor(0xed4245)
+          .setTitle("⚠️ Бармен затупил")
+          .setDescription(
+            "Не смог выдать роль (проверь права бота или ID роли в конфиге). Пиво вернул на счёт."
+          ),
+      ],
       ephemeral: true,
     });
   }
@@ -427,8 +455,8 @@ client.on("interactionCreate", async (interaction) => {
         new EmbedBuilder()
           .setColor(0x5865f2)
           .setTitle(`${category.emoji || ""} ${category.name}`.trim())
-          .setDescription("Разряжай кошелёк, скуф — выбирай свою роль")
-          .setFooter({ text: "Проверить баланс: /balance" }),
+          .setDescription("Разряжай кошелёк, скуф — выбирай, чем гордиться перед братвой")
+          .setFooter({ text: "Проверить загашник: /balance" }),
       ],
       components: buildItemButtons(category),
       files: [],
@@ -447,7 +475,14 @@ client.on("interactionCreate", async (interaction) => {
     const itemId = interaction.customId.replace("shop_buy_", "");
     const item = findShopItem(itemId);
     if (!item) {
-      await interaction.reply({ content: "❌ Товар не найден.", ephemeral: true });
+      await interaction.reply({
+        embeds: [
+          new EmbedBuilder()
+            .setColor(0xed4245)
+            .setDescription("🤷 Такого товара тут нет. Может, полка обвалилась — глянь /shop заново."),
+        ],
+        ephemeral: true,
+      });
       return;
     }
     await purchaseItem(interaction, item);
@@ -464,7 +499,10 @@ client.on("interactionCreate", async (interaction) => {
       embeds: [
         new EmbedBuilder()
           .setColor(0x57f287)
-          .setDescription(`${cfg.CURRENCY_EMOJI} У тебя на балансе: **${bal}** пива`),
+          .setTitle("🍺 Твой загашник")
+          .setDescription(
+            `В кармане звенит: **${bal}** пива ${cfg.CURRENCY_EMOJI}\n\nКопи на роль мечты или спускай в таверне — дело хозяйское.`
+          ),
       ],
       ephemeral: true,
     });
@@ -478,7 +516,12 @@ client.on("interactionCreate", async (interaction) => {
     if (now - last < dayMs) {
       const hoursLeft = Math.ceil((dayMs - (now - last)) / (1000 * 60 * 60));
       await interaction.reply({
-        content: `⏳ Уже забирал сегодня. Приходи через ~${hoursLeft} ч.`,
+        embeds: [
+          new EmbedBuilder()
+            .setColor(0xed4245)
+            .setTitle("⏳ Не гони, скуф")
+            .setDescription(`Пайку на сегодня уже забрал. Трактирщик нальёт ещё через ~${hoursLeft} ч.`),
+        ],
         ephemeral: true,
       });
       return;
@@ -487,7 +530,17 @@ client.on("interactionCreate", async (interaction) => {
     addBalance(user.id, cfg.DAILY_AMOUNT);
     db.lastDaily[user.id] = now;
     save();
-    await interaction.reply(`✅ Забрал ежедневный бонус: **+${cfg.DAILY_AMOUNT}** пива ${cfg.CURRENCY_EMOJI}`);
+    await interaction.reply({
+      embeds: [
+        new EmbedBuilder()
+          .setColor(0x57f287)
+          .setTitle("🎁 Дневная пайка")
+          .setDescription(
+            `Затарился на сегодня: **+${cfg.DAILY_AMOUNT}** пива ${cfg.CURRENCY_EMOJI}\n\nЗаходи завтра — халява в Утопии не кончается.`
+          ),
+      ],
+      ephemeral: true,
+    });
   }
 
   if (commandName === "shop") {
@@ -499,7 +552,14 @@ client.on("interactionCreate", async (interaction) => {
     const item = findShopItem(itemId);
 
     if (!item) {
-      await interaction.reply({ content: "❌ Нет такого предмета. Смотри /shop", ephemeral: true });
+      await interaction.reply({
+        embeds: [
+          new EmbedBuilder()
+            .setColor(0xed4245)
+            .setDescription("🤷 Такого товара тут нет. Может, полка обвалилась — глянь /shop заново."),
+        ],
+        ephemeral: true,
+      });
       return;
     }
 
@@ -523,8 +583,11 @@ client.on("interactionCreate", async (interaction) => {
       embeds: [
         new EmbedBuilder()
           .setColor(0x5865f2)
-          .setTitle("🎯 Твои приглашения")
-          .setDescription(`Всего приглашено: **${count}**\n\n**Последние 5:**\n${lines.join("\n")}`),
+          .setTitle("🎯 Твоя вербовка")
+          .setDescription(
+            `Затащил в Орду: **${count}** человек\n\n**Последние 5 рекрутов:**\n${lines.join("\n")}`
+          )
+          .setFooter({ text: "Больше народу — больше движухи. Тащи ещё!" }),
       ],
       ephemeral: true,
     });
@@ -534,7 +597,11 @@ client.on("interactionCreate", async (interaction) => {
     // Двойная проверка прав — на случай если кто-то вызовет команду в обход UI Discord
     if (!interaction.memberPermissions.has(PermissionFlagsBits.Administrator)) {
       await interaction.reply({
-        content: "❌ Эта команда только для администраторов.",
+        embeds: [
+          new EmbedBuilder()
+            .setColor(0xed4245)
+            .setDescription("🚫 Эта команда не для рядовых скуфов — только для админов Утопии."),
+        ],
         ephemeral: true,
       });
       return;
@@ -545,13 +612,21 @@ client.on("interactionCreate", async (interaction) => {
 
     const newBalance = addBalance(target.id, amount);
 
-    await interaction.reply(
-      `✅ ${amount >= 0 ? "Выдано" : "Списано"} **${Math.abs(amount)}** пива ${cfg.CURRENCY_EMOJI} для <@${target.id}>. Новый баланс: **${newBalance}** ${cfg.CURRENCY_EMOJI}`
-    );
+    await interaction.reply({
+      embeds: [
+        new EmbedBuilder()
+          .setColor(0x57f287)
+          .setTitle("🍺 Казначейство Утопии")
+          .setDescription(
+            `${amount >= 0 ? "Налито" : "Слито"} **${Math.abs(amount)}** пива ${cfg.CURRENCY_EMOJI} для <@${target.id}>.\nНовый баланс: **${newBalance}** ${cfg.CURRENCY_EMOJI}`
+          ),
+      ],
+      ephemeral: true,
+    });
   }
 
   if (commandName === "leaderboard") {
-    await interaction.deferReply();
+    await interaction.deferReply({ ephemeral: true });
 
     const type = interaction.options.getString("type");
     let entries;
@@ -559,10 +634,10 @@ client.on("interactionCreate", async (interaction) => {
 
     if (type === "coins") {
       entries = Object.entries(db.balances);
-      title = `🏆 Топ по пиву ${cfg.CURRENCY_EMOJI}`;
+      title = `🏆 Хранители пивного трона`;
     } else {
       entries = Object.entries(db.inviterCounts);
-      title = "🏆 Топ по инвайтам";
+      title = "🏆 Вербовщики Орды";
     }
 
     entries.sort((a, b) => b[1] - a[1]);
@@ -582,14 +657,26 @@ client.on("interactionCreate", async (interaction) => {
     }
 
     if (filtered.length === 0) {
-      await interaction.editReply("Пока пусто.");
+      await interaction.editReply({
+        embeds: [
+          new EmbedBuilder()
+            .setColor(0xfee75c)
+            .setDescription("Тут пока пусто. Будь первым, кто впишет своё имя в историю Утопии."),
+        ],
+      });
       return;
     }
 
     const suffix = type === "coins" ? ` ${cfg.CURRENCY_EMOJI}` : "";
     const lines = filtered.map(([id, val], i) => `${i + 1}. <@${id}> — ${val}${suffix}`).join("\n");
     await interaction.editReply({
-      embeds: [new EmbedBuilder().setColor(0xfee75c).setTitle(title).setDescription(lines)],
+      embeds: [
+        new EmbedBuilder()
+          .setColor(0xfee75c)
+          .setTitle(title)
+          .setDescription(lines)
+          .setFooter({ text: "Скуфы с админкой в топ не допускаются — по-честному" }),
+      ],
     });
   }
 });
