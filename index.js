@@ -378,6 +378,17 @@ function voiceEarnTick() {
 // Общая логика покупки — используется и командой /buy, и кнопками в магазине
 async function purchaseItem(interaction, item) {
   const userId = interaction.user.id;
+
+  // Проверяем, нет ли уже этой роли — до списания денег
+  const member = await interaction.guild.members.fetch(userId);
+  if (member.roles.cache.has(item.roleId)) {
+    await interaction.reply({
+      content: `😏 У тебя дружок уже есть роль **${item.name}** — не жадничай.`,
+      ephemeral: true,
+    });
+    return;
+  }
+
   const success = subtractBalance(userId, item.price);
 
   if (!success) {
@@ -389,7 +400,6 @@ async function purchaseItem(interaction, item) {
   }
 
   try {
-    const member = await interaction.guild.members.fetch(userId);
     await member.roles.add(item.roleId);
     await interaction.reply({ content: `✅ Купил **${item.name}**! Роль выдана.`, ephemeral: true });
   } catch (e) {
