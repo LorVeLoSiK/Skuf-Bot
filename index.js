@@ -501,7 +501,7 @@ client.on("interactionCreate", async (interaction) => {
           .setColor(0x57f287)
           .setTitle("🍺 Твой загашник")
           .setDescription(
-            `В кармане звенит: **${bal}** пива ${cfg.CURRENCY_EMOJI}\n\nКопи на роль мечты или спускай в таверне — дело хозяйское.`
+            `В кармане звенит: **${bal}** ${cfg.CURRENCY_EMOJI}\n\nКопи на роль мечты или спускай в таверне — дело хозяйское.`
           ),
       ],
       ephemeral: true,
@@ -536,7 +536,7 @@ client.on("interactionCreate", async (interaction) => {
           .setColor(0x57f287)
           .setTitle("🎁 Дневная пайка")
           .setDescription(
-            `Затарился на сегодня: **+${cfg.DAILY_AMOUNT}** пива ${cfg.CURRENCY_EMOJI}\n\nЗаходи завтра — халява в Утопии не кончается.`
+            `Затарился на сегодня: **+${cfg.DAILY_AMOUNT}** ${cfg.CURRENCY_EMOJI}\n\nЗаходи завтра — халява в Утопии не кончается.`
           ),
       ],
       ephemeral: true,
@@ -618,7 +618,7 @@ client.on("interactionCreate", async (interaction) => {
           .setColor(0x57f287)
           .setTitle("🍺 Казначейство Утопии")
           .setDescription(
-            `${amount >= 0 ? "Налито" : "Слито"} **${Math.abs(amount)}** пива ${cfg.CURRENCY_EMOJI} для <@${target.id}>.\nНовый баланс: **${newBalance}** ${cfg.CURRENCY_EMOJI}`
+            `${amount >= 0 ? "Налито" : "Слито"} **${Math.abs(amount)}** ${cfg.CURRENCY_EMOJI} для <@${target.id}>.\nНовый баланс: **${newBalance}** ${cfg.CURRENCY_EMOJI}`
           ),
       ],
       ephemeral: true,
