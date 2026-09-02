@@ -551,6 +551,8 @@ client.on("interactionCreate", async (interaction) => {
   }
 
   if (commandName === "leaderboard") {
+    await interaction.deferReply();
+
     const type = interaction.options.getString("type");
     let entries;
     let title;
@@ -564,16 +566,29 @@ client.on("interactionCreate", async (interaction) => {
     }
 
     entries.sort((a, b) => b[1] - a[1]);
-    const top10 = entries.slice(0, 10);
 
-    if (top10.length === 0) {
-      await interaction.reply("Пока пусто.");
+    // Убираем из лидерборда админов сервера — проверяем по очереди, пока не
+    // наберём 10 обычных участников (или пока не кончится список)
+    const filtered = [];
+    for (const entry of entries) {
+      if (filtered.length >= 10) break;
+      try {
+        const member = await interaction.guild.members.fetch(entry[0]);
+        if (member.permissions.has(PermissionFlagsBits.Administrator)) continue;
+        filtered.push(entry);
+      } catch (e) {
+        // юзера больше нет на сервере — пропускаем
+      }
+    }
+
+    if (filtered.length === 0) {
+      await interaction.editReply("Пока пусто.");
       return;
     }
 
     const suffix = type === "coins" ? ` ${cfg.CURRENCY_EMOJI}` : "";
-    const lines = top10.map(([id, val], i) => `${i + 1}. <@${id}> — ${val}${suffix}`).join("\n");
-    await interaction.reply({
+    const lines = filtered.map(([id, val], i) => `${i + 1}. <@${id}> — ${val}${suffix}`).join("\n");
+    await interaction.editReply({
       embeds: [new EmbedBuilder().setColor(0xfee75c).setTitle(title).setDescription(lines)],
     });
   }
