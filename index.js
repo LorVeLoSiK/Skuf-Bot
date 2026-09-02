@@ -123,7 +123,7 @@ function buildShopHome() {
 
   const embed = new EmbedBuilder()
     .setColor(0x5865f2)
-    .setTitle("🛒 Магазин Утопии")
+    .setTitle("🍻 Таверна Утопии")
     .setDescription("Разряжай кошелёк, скуф — выбирай свою роль")
     .setImage("attachment://shop_banner.jpg")
     .setFooter({ text: "Проверить баланс: /balance" });
@@ -144,7 +144,7 @@ function buildItemButtons(category) {
     currentRow.addComponents(
       new ButtonBuilder()
         .setCustomId(`shop_buy_${item.id}`)
-        .setLabel(`${item.name} — ${item.price}`)
+        .setLabel(`${item.name} — ${item.price} 🍺`)
         .setEmoji(item.emoji || cfg.CURRENCY_EMOJI)
         .setStyle(ButtonStyle.Success)
     );
@@ -481,7 +481,7 @@ client.on("interactionCreate", async (interaction) => {
   }
 
   if (commandName === "shop") {
-    await interaction.reply(buildShopHome());
+    await interaction.reply({ ...buildShopHome(), ephemeral: true });
   }
 
   if (commandName === "buy") {
