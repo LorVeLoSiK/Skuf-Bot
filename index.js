@@ -12,7 +12,9 @@ const {
   ButtonBuilder,
   ButtonStyle,
   StringSelectMenuBuilder,
+  AttachmentBuilder,
 } = require("discord.js");
+const path = require("path");
 const cfg = require("./config");
 const { db, save, getBalance, addBalance, subtractBalance } = require("./db");
 
@@ -110,6 +112,23 @@ function buildCategoryMenu() {
       }))
     );
   return new ActionRowBuilder().addComponents(menu);
+}
+
+// Собирает главный экран магазина (список категорий) — с баннером и футером.
+// Используется и командой /shop, и кнопкой "Назад к категориям"
+function buildShopHome() {
+  const banner = new AttachmentBuilder(path.join(__dirname, "assets", "shop_banner.jpg"), {
+    name: "shop_banner.jpg",
+  });
+
+  const embed = new EmbedBuilder()
+    .setColor(0x5865f2)
+    .setTitle("🛒 Магазин Утопии")
+    .setDescription("Разряжай кошелёк, скуф — выбирай свою роль")
+    .setImage("attachment://shop_banner.jpg")
+    .setFooter({ text: "Проверить баланс: /balance" });
+
+  return { embeds: [embed], components: [buildCategoryMenu()], files: [banner] };
 }
 
 // Строит кнопки товаров внутри выбранной категории + кнопку "Назад"
@@ -398,24 +417,18 @@ client.on("interactionCreate", async (interaction) => {
         new EmbedBuilder()
           .setColor(0x5865f2)
           .setTitle(`${category.emoji || ""} ${category.name}`.trim())
-          .setDescription("Нажми на кнопку, чтобы купить."),
+          .setDescription("Разряжай кошелёк, скуф — выбирай свою роль")
+          .setFooter({ text: "Проверить баланс: /balance" }),
       ],
       components: buildItemButtons(category),
+      files: [],
     });
     return;
   }
 
   // Кнопка "Назад к категориям"
   if (interaction.isButton() && interaction.customId === "shop_back") {
-    await interaction.update({
-      embeds: [
-        new EmbedBuilder()
-          .setColor(0x5865f2)
-          .setTitle("🛒 Магазин Утопии")
-          .setDescription("Выбери категорию ниже, чтобы посмотреть товары."),
-      ],
-      components: [buildCategoryMenu()],
-    });
+    await interaction.update(buildShopHome());
     return;
   }
 
@@ -468,15 +481,7 @@ client.on("interactionCreate", async (interaction) => {
   }
 
   if (commandName === "shop") {
-    await interaction.reply({
-      embeds: [
-        new EmbedBuilder()
-          .setColor(0x5865f2)
-          .setTitle("🛒 Магазин Утопии")
-          .setDescription("Выбери категорию ниже, чтобы посмотреть товары."),
-      ],
-      components: [buildCategoryMenu()],
-    });
+    await interaction.reply(buildShopHome());
   }
 
   if (commandName === "buy") {
