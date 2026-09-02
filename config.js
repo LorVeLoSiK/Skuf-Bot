@@ -51,8 +51,12 @@ module.exports = {
       name: "Роль",
       emoji: "🧌",
       items: [
-        { id: "brat", name: "Брат", price: 1200, roleId: "1420292146040144024", emoji: "🐦‍🔥" },
-        { id: "storogila", name: "Сторожила", price: 1000, roleId: "1420291717302587442", emoji: "⚠️" },
+        { id: "garagelegend", name: "Легенда Гаража", price: 6500, roleId: "1420292146040144024", emoji: "🏆" },
+        { id: "hanskuf", name: "Хан Скуфов", price: 3000, roleId: "1420291717302587442", emoji: "👑" },
+        { id: "boltorez", name: "Болторез", price: 1400, roleId: "1420291579129888780", emoji: "💎" },
+        { id: "brigadirordi", name: "Бригадир Орды", price: 600, roleId: "1361659685391831250", emoji: "🥇" },
+        { id: "garageork", name: "Гаражный Орк", price: 250, roleId: "1361658607275606066", emoji: "🥈" },
+        { id: "skufstager", name: "Скуф-Стажёр", price: 75, roleId: "1349010832628912238", emoji: "🥉" }
       ],
     },
     // можешь добавить ещё категории по этому же образцу, например:
