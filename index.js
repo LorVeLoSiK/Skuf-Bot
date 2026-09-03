@@ -132,6 +132,22 @@ const commands = [
     .addStringOption((opt) =>
       opt.setName("reason").setDescription("Причина").setRequired(false)
     ),
+  new SlashCommandBuilder()
+    .setName("unmute")
+    .setDescription("[Модератор] Снять мут раньше срока")
+    .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers)
+    .addUserOption((opt) => opt.setName("user").setDescription("Кого").setRequired(true))
+    .addStringOption((opt) =>
+      opt.setName("reason").setDescription("Причина").setRequired(false)
+    ),
+  new SlashCommandBuilder()
+    .setName("untimeout")
+    .setDescription("[Модератор] Снять тайм-аут раньше срока")
+    .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers)
+    .addUserOption((opt) => opt.setName("user").setDescription("Кого").setRequired(true))
+    .addStringOption((opt) =>
+      opt.setName("reason").setDescription("Причина").setRequired(false)
+    ),
 ].map((c) => c.toJSON());
 
 async function registerCommands() {
@@ -348,6 +364,21 @@ function parseDuration(str) {
   const multipliers = { s: 1000, m: 60 * 1000, h: 60 * 60 * 1000, d: 24 * 60 * 60 * 1000 };
 
   return amount * multipliers[unit];
+}
+
+// Форматирует миллисекунды в читаемую строку вида "1д 2ч 30м"
+function formatDuration(ms) {
+  const totalMinutes = Math.round(ms / 60000);
+  const days = Math.floor(totalMinutes / (24 * 60));
+  const hours = Math.floor((totalMinutes % (24 * 60)) / 60);
+  const minutes = totalMinutes % 60;
+
+  const parts = [];
+  if (days > 0) parts.push(`${days}д`);
+  if (hours > 0) parts.push(`${hours}ч`);
+  if (minutes > 0 || parts.length === 0) parts.push(`${minutes}м`);
+
+  return parts.join(" ");
 }
 
 // Проверяет активные тайм-мьюты и снимает роль у тех, у кого время вышло
@@ -858,8 +889,17 @@ client.on("interactionCreate", async (interaction) => {
       const member = await interaction.guild.members.fetch(target.id);
       await member.roles.add(cfg.MUTE_ROLE_ID);
 
-      db.mutes[target.id] = { expiresAt: Date.now() + durationMs, guildId: interaction.guild.id };
+      const now = Date.now();
+      const existingMute = db.mutes[target.id];
+      const wasAlreadyMuted = existingMute && existingMute.expiresAt > now;
+
+      // Если мут уже активен — прибавляем новое время к оставшемуся, а не начинаем заново
+      const baseTime = wasAlreadyMuted ? existingMute.expiresAt : now;
+      db.mutes[target.id] = { expiresAt: baseTime + durationMs, guildId: interaction.guild.id };
       save();
+
+      const totalRemainingMs = db.mutes[target.id].expiresAt - now;
+      const totalRemainingStr = formatDuration(totalRemainingMs);
 
       await interaction.reply({
         embeds: [
@@ -867,7 +907,9 @@ client.on("interactionCreate", async (interaction) => {
             .setColor(0xed4245)
             .setTitle("🔇 Замучен")
             .setDescription(
-              `<@${target.id}> замучен на **${timeStr}**\n**Причина:** ${reason}`
+              wasAlreadyMuted
+                ? `<@${target.id}> уже был в муте — накинул ещё **${timeStr}**\n**Причина:** ${reason}\n\nОбщий остаток: **${totalRemainingStr}**`
+                : `<@${target.id}> замучен на **${timeStr}**\n**Причина:** ${reason}`
             ),
         ],
         ephemeral: true,
@@ -1012,6 +1054,76 @@ client.on("interactionCreate", async (interaction) => {
           new EmbedBuilder()
             .setColor(0xed4245)
             .setDescription("⚠️ Не смог забанить (проверь права бота и его позицию в списке ролей)."),
+        ],
+        ephemeral: true,
+      });
+    }
+  }
+
+  if (commandName === "unmute") {
+    const target = interaction.options.getUser("user");
+    const reason = interaction.options.getString("reason") || "Причина не указана";
+
+    try {
+      const member = await interaction.guild.members.fetch(target.id);
+      await member.roles.remove(cfg.MUTE_ROLE_ID);
+      delete db.mutes[target.id];
+      save();
+
+      await interaction.reply({
+        embeds: [
+          new EmbedBuilder()
+            .setColor(0x57f287)
+            .setTitle("🔊 Мут снят")
+            .setDescription(`<@${target.id}> может снова говорить\n**Причина:** ${reason}`),
+        ],
+        ephemeral: true,
+      });
+
+      await logToChannel(
+        interaction.guild,
+        `🔊 <@${target.id}> — мут снят модератором <@${user.id}> досрочно — причина: ${reason}`
+      );
+    } catch (e) {
+      await interaction.reply({
+        embeds: [
+          new EmbedBuilder()
+            .setColor(0xed4245)
+            .setDescription("⚠️ Не смог снять роль мута (проверь права бота)."),
+        ],
+        ephemeral: true,
+      });
+    }
+  }
+
+  if (commandName === "untimeout") {
+    const target = interaction.options.getUser("user");
+    const reason = interaction.options.getString("reason") || "Причина не указана";
+
+    try {
+      const member = await interaction.guild.members.fetch(target.id);
+      await member.timeout(null, reason);
+
+      await interaction.reply({
+        embeds: [
+          new EmbedBuilder()
+            .setColor(0x57f287)
+            .setTitle("⏱️ Тайм-аут снят")
+            .setDescription(`<@${target.id}> снова может писать и говорить\n**Причина:** ${reason}`),
+        ],
+        ephemeral: true,
+      });
+
+      await logToChannel(
+        interaction.guild,
+        `⏱️ <@${target.id}> — тайм-аут снят модератором <@${user.id}> досрочно — причина: ${reason}`
+      );
+    } catch (e) {
+      await interaction.reply({
+        embeds: [
+          new EmbedBuilder()
+            .setColor(0xed4245)
+            .setDescription("⚠️ Не смог снять тайм-аут (проверь права бота)."),
         ],
         ephemeral: true,
       });
