@@ -28,6 +28,7 @@ function loadDB() {
       joinedVia: {},          // memberId(того кто зашёл) -> { inviterId, joinedAt }
       givenRoles: {},          // userId -> [roleId, roleId, ...] уже выданные пороговые роли (чтобы не выдавать повторно)
       recentInvites: {},        // userId(инвайтера) -> [{ userId, username, joinedAt }, ...] последние 5, новые сверху
+      warns: {},                 // userId -> [{ reason, moderatorId, timestamp }, ...] сгорают через WARN_EXPIRY_DAYS
       inviteCodeCache: {},       // guildId -> { code: uses } — снэпшот инвайтов для вычисления, кто кого пригласил
     };
     fs.writeFileSync(DB_PATH, JSON.stringify(initial, null, 2));
@@ -42,6 +43,9 @@ let db = loadDB();
 // чтобы не упасть на существующих данных (например, уже на Railway)
 if (!db.recentInvites) {
   db.recentInvites = {};
+}
+if (!db.warns) {
+  db.warns = {};
 }
 
 function save() {

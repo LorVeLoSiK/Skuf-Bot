@@ -75,6 +75,19 @@ const commands = [
         .setDescription("Сколько пива (можно отрицательное число, чтобы списать)")
         .setRequired(true)
     ),
+  new SlashCommandBuilder()
+    .setName("warn")
+    .setDescription("[Админ] Выдать предупреждение участнику")
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
+    .addUserOption((opt) => opt.setName("user").setDescription("Кому").setRequired(true))
+    .addStringOption((opt) =>
+      opt.setName("reason").setDescription("Причина предупреждения").setRequired(true)
+    ),
+  new SlashCommandBuilder()
+    .setName("warnings")
+    .setDescription("[Админ] Показать предупреждения участника")
+    .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
+    .addUserOption((opt) => opt.setName("user").setDescription("Кто").setRequired(true)),
 ].map((c) => c.toJSON());
 
 async function registerCommands() {
@@ -254,7 +267,28 @@ client.once("ready", async () => {
 
   // Запускаем таймер начисления пива за войс
   setInterval(voiceEarnTick, cfg.VOICE_INTERVAL_MINUTES * 60 * 1000);
+
+  // Чистим сгоревшие варны сразу при старте, и дальше раз в 6 часов
+  cleanExpiredWarns();
+  setInterval(cleanExpiredWarns, 6 * 60 * 60 * 1000);
 });
+
+// Удаляет варны старше WARN_EXPIRY_DAYS, чтобы база не пухла бесконечно
+function cleanExpiredWarns() {
+  const expiryMs = cfg.WARN_EXPIRY_DAYS * 24 * 60 * 60 * 1000;
+  const now = Date.now();
+  let changed = false;
+
+  for (const userId of Object.keys(db.warns)) {
+    const before = db.warns[userId].length;
+    db.warns[userId] = db.warns[userId].filter((w) => now - w.timestamp < expiryMs);
+
+    if (db.warns[userId].length !== before) changed = true;
+    if (db.warns[userId].length === 0) delete db.warns[userId];
+  }
+
+  if (changed) save();
+}
 
 // Обновляем кэш при создании/удалении инвайта
 client.on("inviteCreate", async (invite) => {
@@ -620,6 +654,98 @@ client.on("interactionCreate", async (interaction) => {
           .setDescription(
             `${amount >= 0 ? "Налито" : "Слито"} **${Math.abs(amount)}** ${cfg.CURRENCY_EMOJI} для <@${target.id}>.\nНовый баланс: **${newBalance}** ${cfg.CURRENCY_EMOJI}`
           ),
+      ],
+      ephemeral: true,
+    });
+  }
+
+  if (commandName === "warn") {
+    if (!interaction.memberPermissions.has(PermissionFlagsBits.Administrator)) {
+      await interaction.reply({
+        embeds: [
+          new EmbedBuilder()
+            .setColor(0xed4245)
+            .setDescription("🚫 Эта команда не для рядовых скуфов — только для админов Утопии."),
+        ],
+        ephemeral: true,
+      });
+      return;
+    }
+
+    const target = interaction.options.getUser("user");
+    const reason = interaction.options.getString("reason");
+
+    if (!db.warns[target.id]) db.warns[target.id] = [];
+    db.warns[target.id].push({
+      reason,
+      moderatorId: user.id,
+      timestamp: Date.now(),
+    });
+    save();
+
+    const activeCount = db.warns[target.id].length;
+
+    await interaction.reply({
+      embeds: [
+        new EmbedBuilder()
+          .setColor(0xed4245)
+          .setTitle("⚠️ Предупреждение выдано")
+          .setDescription(
+            `<@${target.id}> получил варн от <@${user.id}>\n**Причина:** ${reason}\n\nАктивных варнов: **${activeCount}** (сгорают через ${cfg.WARN_EXPIRY_DAYS} дней)`
+          ),
+      ],
+      ephemeral: true,
+    });
+
+    await logToChannel(
+      interaction.guild,
+      `⚠️ <@${target.id}> получил варн от <@${user.id}> — причина: ${reason}`
+    );
+  }
+
+  if (commandName === "warnings") {
+    if (!interaction.memberPermissions.has(PermissionFlagsBits.Administrator)) {
+      await interaction.reply({
+        embeds: [
+          new EmbedBuilder()
+            .setColor(0xed4245)
+            .setDescription("🚫 Эта команда не для рядовых скуфов — только для админов Утопии."),
+        ],
+        ephemeral: true,
+      });
+      return;
+    }
+
+    const target = interaction.options.getUser("user");
+    const expiryMs = cfg.WARN_EXPIRY_DAYS * 24 * 60 * 60 * 1000;
+    const now = Date.now();
+    const active = (db.warns[target.id] || []).filter((w) => now - w.timestamp < expiryMs);
+
+    if (active.length === 0) {
+      await interaction.reply({
+        embeds: [
+          new EmbedBuilder()
+            .setColor(0x57f287)
+            .setDescription(`<@${target.id}> чист — активных варнов нет.`),
+        ],
+        ephemeral: true,
+      });
+      return;
+    }
+
+    const lines = active
+      .map((w, i) => {
+        const daysAgo = Math.floor((now - w.timestamp) / (1000 * 60 * 60 * 24));
+        return `${i + 1}. **${w.reason}** — от <@${w.moderatorId}>, ${daysAgo} дн. назад`;
+      })
+      .join("\n");
+
+    await interaction.reply({
+      embeds: [
+        new EmbedBuilder()
+          .setColor(0xed4245)
+          .setTitle("⚠️ Варны участника")
+          .setDescription(`<@${target.id}> — активных: **${active.length}**\n\n${lines}`),
       ],
       ephemeral: true,
     });
