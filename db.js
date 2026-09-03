@@ -29,6 +29,7 @@ function loadDB() {
       givenRoles: {},          // userId -> [roleId, roleId, ...] уже выданные пороговые роли (чтобы не выдавать повторно)
       recentInvites: {},        // userId(инвайтера) -> [{ userId, username, joinedAt }, ...] последние 5, новые сверху
       warns: {},                 // userId -> [{ reason, moderatorId, timestamp }, ...] сгорают через WARN_EXPIRY_DAYS
+      mutes: {},                  // userId -> { expiresAt, guildId } — активные тайм-мьюты через роль
       inviteCodeCache: {},       // guildId -> { code: uses } — снэпшот инвайтов для вычисления, кто кого пригласил
     };
     fs.writeFileSync(DB_PATH, JSON.stringify(initial, null, 2));
@@ -46,6 +47,9 @@ if (!db.recentInvites) {
 }
 if (!db.warns) {
   db.warns = {};
+}
+if (!db.mutes) {
+  db.mutes = {};
 }
 
 function save() {

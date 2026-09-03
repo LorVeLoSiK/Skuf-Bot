@@ -88,6 +88,50 @@ const commands = [
     .setDescription("[Админ] Показать предупреждения участника")
     .setDefaultMemberPermissions(PermissionFlagsBits.Administrator)
     .addUserOption((opt) => opt.setName("user").setDescription("Кто").setRequired(true)),
+  new SlashCommandBuilder()
+    .setName("mute")
+    .setDescription("[Модератор] Замутить участника (роль, снимается автоматически)")
+    .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers)
+    .addUserOption((opt) => opt.setName("user").setDescription("Кого").setRequired(true))
+    .addStringOption((opt) =>
+      opt
+        .setName("time")
+        .setDescription("Сколько времени: например 10m, 2h, 1d")
+        .setRequired(true)
+    )
+    .addStringOption((opt) =>
+      opt.setName("reason").setDescription("Причина").setRequired(false)
+    ),
+  new SlashCommandBuilder()
+    .setName("timeout")
+    .setDescription("[Модератор] Тайм-аут через Discord (макс. 28 дней)")
+    .setDefaultMemberPermissions(PermissionFlagsBits.ModerateMembers)
+    .addUserOption((opt) => opt.setName("user").setDescription("Кого").setRequired(true))
+    .addStringOption((opt) =>
+      opt
+        .setName("time")
+        .setDescription("Сколько времени: например 10m, 2h, 1d (максимум 28d)")
+        .setRequired(true)
+    )
+    .addStringOption((opt) =>
+      opt.setName("reason").setDescription("Причина").setRequired(false)
+    ),
+  new SlashCommandBuilder()
+    .setName("kick")
+    .setDescription("[Модератор] Выгнать участника с сервера")
+    .setDefaultMemberPermissions(PermissionFlagsBits.KickMembers)
+    .addUserOption((opt) => opt.setName("user").setDescription("Кого").setRequired(true))
+    .addStringOption((opt) =>
+      opt.setName("reason").setDescription("Причина").setRequired(false)
+    ),
+  new SlashCommandBuilder()
+    .setName("ban")
+    .setDescription("[Модератор] Забанить участника")
+    .setDefaultMemberPermissions(PermissionFlagsBits.BanMembers)
+    .addUserOption((opt) => opt.setName("user").setDescription("Кого").setRequired(true))
+    .addStringOption((opt) =>
+      opt.setName("reason").setDescription("Причина").setRequired(false)
+    ),
 ].map((c) => c.toJSON());
 
 async function registerCommands() {
@@ -271,6 +315,10 @@ client.once("ready", async () => {
   // Чистим сгоревшие варны сразу при старте, и дальше раз в 6 часов
   cleanExpiredWarns();
   setInterval(cleanExpiredWarns, 6 * 60 * 60 * 1000);
+
+  // Проверяем истёкшие тайм-мьюты сразу при старте, и дальше каждую минуту
+  checkExpiredMutes();
+  setInterval(checkExpiredMutes, 60 * 1000);
 });
 
 // Удаляет варны старше WARN_EXPIRY_DAYS, чтобы база не пухла бесконечно
@@ -285,6 +333,43 @@ function cleanExpiredWarns() {
 
     if (db.warns[userId].length !== before) changed = true;
     if (db.warns[userId].length === 0) delete db.warns[userId];
+  }
+
+  if (changed) save();
+}
+
+// Парсит строку вида "10m", "2h", "1d", "30s" в миллисекунды. null, если формат неверный
+function parseDuration(str) {
+  const match = /^(\d+)\s*(s|m|h|d)$/i.exec(str.trim());
+  if (!match) return null;
+
+  const amount = parseInt(match[1], 10);
+  const unit = match[2].toLowerCase();
+  const multipliers = { s: 1000, m: 60 * 1000, h: 60 * 60 * 1000, d: 24 * 60 * 60 * 1000 };
+
+  return amount * multipliers[unit];
+}
+
+// Проверяет активные тайм-мьюты и снимает роль у тех, у кого время вышло
+async function checkExpiredMutes() {
+  const now = Date.now();
+  let changed = false;
+
+  for (const userId of Object.keys(db.mutes)) {
+    const muteInfo = db.mutes[userId];
+    if (now < muteInfo.expiresAt) continue;
+
+    try {
+      const guild = await client.guilds.fetch(muteInfo.guildId);
+      const member = await guild.members.fetch(userId);
+      await member.roles.remove(cfg.MUTE_ROLE_ID);
+      await logToChannel(guild, `🔊 <@${userId}> — время мута вышло, роль снята.`);
+    } catch (e) {
+      // юзер мог уже выйти с сервера или роль уже снята вручную — пропускаем
+    }
+
+    delete db.mutes[userId];
+    changed = true;
   }
 
   if (changed) save();
@@ -749,6 +834,188 @@ client.on("interactionCreate", async (interaction) => {
       ],
       ephemeral: true,
     });
+  }
+
+  if (commandName === "mute") {
+    const target = interaction.options.getUser("user");
+    const timeStr = interaction.options.getString("time");
+    const reason = interaction.options.getString("reason") || "Причина не указана";
+
+    const durationMs = parseDuration(timeStr);
+    if (!durationMs) {
+      await interaction.reply({
+        embeds: [
+          new EmbedBuilder()
+            .setColor(0xed4245)
+            .setDescription("❌ Неверный формат времени. Примеры: `10m`, `2h`, `1d`, `30s`"),
+        ],
+        ephemeral: true,
+      });
+      return;
+    }
+
+    try {
+      const member = await interaction.guild.members.fetch(target.id);
+      await member.roles.add(cfg.MUTE_ROLE_ID);
+
+      db.mutes[target.id] = { expiresAt: Date.now() + durationMs, guildId: interaction.guild.id };
+      save();
+
+      await interaction.reply({
+        embeds: [
+          new EmbedBuilder()
+            .setColor(0xed4245)
+            .setTitle("🔇 Замучен")
+            .setDescription(
+              `<@${target.id}> замучен на **${timeStr}**\n**Причина:** ${reason}`
+            ),
+        ],
+        ephemeral: true,
+      });
+
+      await logToChannel(
+        interaction.guild,
+        `🔇 <@${target.id}> замучен модератором <@${user.id}> на ${timeStr} — причина: ${reason}`
+      );
+    } catch (e) {
+      await interaction.reply({
+        embeds: [
+          new EmbedBuilder()
+            .setColor(0xed4245)
+            .setDescription("⚠️ Не смог выдать роль мута (проверь MUTE_ROLE_ID и права бота)."),
+        ],
+        ephemeral: true,
+      });
+    }
+  }
+
+  if (commandName === "timeout") {
+    const target = interaction.options.getUser("user");
+    const timeStr = interaction.options.getString("time");
+    const reason = interaction.options.getString("reason") || "Причина не указана";
+
+    const durationMs = parseDuration(timeStr);
+    const maxMs = 28 * 24 * 60 * 60 * 1000; // ограничение самого Discord — максимум 28 дней
+
+    if (!durationMs) {
+      await interaction.reply({
+        embeds: [
+          new EmbedBuilder()
+            .setColor(0xed4245)
+            .setDescription("❌ Неверный формат времени. Примеры: `10m`, `2h`, `1d`"),
+        ],
+        ephemeral: true,
+      });
+      return;
+    }
+
+    if (durationMs > maxMs) {
+      await interaction.reply({
+        embeds: [
+          new EmbedBuilder()
+            .setColor(0xed4245)
+            .setDescription("❌ Discord не позволяет тайм-аут дольше 28 дней."),
+        ],
+        ephemeral: true,
+      });
+      return;
+    }
+
+    try {
+      const member = await interaction.guild.members.fetch(target.id);
+      await member.timeout(durationMs, reason);
+
+      await interaction.reply({
+        embeds: [
+          new EmbedBuilder()
+            .setColor(0xed4245)
+            .setTitle("⏱️ Тайм-аут выдан")
+            .setDescription(`<@${target.id}> в тайм-ауте на **${timeStr}**\n**Причина:** ${reason}`),
+        ],
+        ephemeral: true,
+      });
+
+      await logToChannel(
+        interaction.guild,
+        `⏱️ <@${target.id}> получил тайм-аут от <@${user.id}> на ${timeStr} — причина: ${reason}`
+      );
+    } catch (e) {
+      await interaction.reply({
+        embeds: [
+          new EmbedBuilder()
+            .setColor(0xed4245)
+            .setDescription("⚠️ Не смог выдать тайм-аут (проверь права бота и его позицию в списке ролей)."),
+        ],
+        ephemeral: true,
+      });
+    }
+  }
+
+  if (commandName === "kick") {
+    const target = interaction.options.getUser("user");
+    const reason = interaction.options.getString("reason") || "Причина не указана";
+
+    try {
+      const member = await interaction.guild.members.fetch(target.id);
+      await member.kick(reason);
+
+      await interaction.reply({
+        embeds: [
+          new EmbedBuilder()
+            .setColor(0xed4245)
+            .setTitle("👢 Выгнан")
+            .setDescription(`<@${target.id}> выгнан с сервера\n**Причина:** ${reason}`),
+        ],
+        ephemeral: true,
+      });
+
+      await logToChannel(
+        interaction.guild,
+        `👢 <@${target.id}> выгнан модератором <@${user.id}> — причина: ${reason}`
+      );
+    } catch (e) {
+      await interaction.reply({
+        embeds: [
+          new EmbedBuilder()
+            .setColor(0xed4245)
+            .setDescription("⚠️ Не смог выгнать (проверь права бота и его позицию в списке ролей)."),
+        ],
+        ephemeral: true,
+      });
+    }
+  }
+
+  if (commandName === "ban") {
+    const target = interaction.options.getUser("user");
+    const reason = interaction.options.getString("reason") || "Причина не указана";
+
+    try {
+      await interaction.guild.members.ban(target.id, { reason });
+
+      await interaction.reply({
+        embeds: [
+          new EmbedBuilder()
+            .setColor(0xed4245)
+            .setTitle("🔨 Забанен")
+            .setDescription(`<@${target.id}> забанен на сервере\n**Причина:** ${reason}`),
+        ],
+        ephemeral: true,
+      });
+
+      await logToChannel(
+        interaction.guild,
+        `🔨 <@${target.id}> забанен модератором <@${user.id}> — причина: ${reason}`
+      );
+    } catch (e) {
+      await interaction.reply({
+        embeds: [
+          new EmbedBuilder()
+            .setColor(0xed4245)
+            .setDescription("⚠️ Не смог забанить (проверь права бота и его позицию в списке ролей)."),
+        ],
+        ephemeral: true,
+      });
+    }
   }
 
   if (commandName === "leaderboard") {
