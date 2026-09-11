@@ -381,6 +381,38 @@ function formatDuration(ms) {
   return parts.join(" ");
 }
 
+// Форматирует миллисекунды точнее, с секундами — для сообщений в ЛС ("9 мин 59 сек")
+function formatDurationPrecise(ms) {
+  let totalSeconds = Math.round(ms / 1000);
+  const days = Math.floor(totalSeconds / 86400);
+  totalSeconds %= 86400;
+  const hours = Math.floor(totalSeconds / 3600);
+  totalSeconds %= 3600;
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+
+  const parts = [];
+  if (days > 0) parts.push(`${days} д`);
+  if (hours > 0) parts.push(`${hours} ч`);
+  if (minutes > 0) parts.push(`${minutes} мин`);
+  if (seconds > 0 || parts.length === 0) parts.push(`${seconds} сек`);
+
+  return parts.join(" ");
+}
+
+// Пытается отправить участнику ЛС о наказании. Многие держат ЛС закрытыми для
+// незнакомых серверов — в этом случае просто молча не получится, и это нормально.
+async function sendPunishmentDM(targetUser, description) {
+  try {
+    await targetUser.send({
+      embeds: [new EmbedBuilder().setColor(0xed4245).setDescription(description)],
+    });
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
 // Проверяет активные тайм-мьюты и снимает роль у тех, у кого время вышло
 async function checkExpiredMutes() {
   const now = Date.now();
@@ -801,6 +833,11 @@ client.on("interactionCreate", async (interaction) => {
 
     const activeCount = db.warns[target.id].length;
 
+    await sendPunishmentDM(
+      target,
+      `Тебе выдали предупреждение на сервере **Skuf Utopia**. Причина: ${reason}. Модератор: ${user.username}`
+    );
+
     await interaction.reply({
       embeds: [
         new EmbedBuilder()
@@ -901,6 +938,11 @@ client.on("interactionCreate", async (interaction) => {
       const totalRemainingMs = db.mutes[target.id].expiresAt - now;
       const totalRemainingStr = formatDuration(totalRemainingMs);
 
+      await sendPunishmentDM(
+        target,
+        `Тебя замутили на сервере **Skuf Utopia** на ${formatDurationPrecise(durationMs)}. Причина: ${reason}. Модератор: ${user.username}`
+      );
+
       await interaction.reply({
         embeds: [
           new EmbedBuilder()
@@ -967,6 +1009,11 @@ client.on("interactionCreate", async (interaction) => {
       const member = await interaction.guild.members.fetch(target.id);
       await member.timeout(durationMs, reason);
 
+      await sendPunishmentDM(
+        target,
+        `Тебе выдали тайм-аут на сервере **Skuf Utopia** на ${formatDurationPrecise(durationMs)}. Причина: ${reason}. Модератор: ${user.username}`
+      );
+
       await interaction.reply({
         embeds: [
           new EmbedBuilder()
@@ -999,6 +1046,12 @@ client.on("interactionCreate", async (interaction) => {
 
     try {
       const member = await interaction.guild.members.fetch(target.id);
+
+      await sendPunishmentDM(
+        target,
+        `Тебя выгнали с сервера **Skuf Utopia**. Причина: ${reason}. Модератор: ${user.username}`
+      );
+
       await member.kick(reason);
 
       await interaction.reply({
@@ -1032,6 +1085,11 @@ client.on("interactionCreate", async (interaction) => {
     const reason = interaction.options.getString("reason") || "Причина не указана";
 
     try {
+      await sendPunishmentDM(
+        target,
+        `Тебя забанили на сервере **Skuf Utopia**. Причина: ${reason}. Модератор: ${user.username}`
+      );
+
       await interaction.guild.members.ban(target.id, { reason });
 
       await interaction.reply({
